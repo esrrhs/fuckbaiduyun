@@ -47,7 +47,7 @@ func main() {
 		return
 	}
 
-	log.Print(s)
+	log.Print("get all file done")
 
 	total := 0
 	for _, ss := range s {
