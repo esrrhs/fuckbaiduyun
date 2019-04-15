@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -48,7 +49,16 @@ func main() {
 
 	log.Print(s)
 
-	total := len(s)
+	total := 0
+	for _, ss := range s {
+
+		if strings.HasPrefix(filepath.Base(ss), "fuckbaiduyun") {
+			continue
+		}
+
+		total++
+	}
+
 	en := 0
 	for _, ss := range s{
 		if strings.HasSuffix(ss, "fuckbaiduyun") {
@@ -69,7 +79,11 @@ func main() {
 
 
 	for _, ss := range s{
-		if strings.HasSuffix(ss, "fuckbaiduyun") {
+
+		if strings.HasPrefix(filepath.Base(ss), "fuckbaiduyun") {
+			continue
+		}
+		if strings.HasSuffix(filepath.Base(ss), "fuckbaiduyun") {
 			if !doen {
 				workResultLock.Add(1)
 				go defuck(ss)
