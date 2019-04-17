@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 func getallfiles(pathname string, s []string) ([]string, error) {
@@ -33,8 +34,8 @@ func getallfiles(pathname string, s []string) ([]string, error) {
 	return s, nil
 }
 
-
 var workResultLock sync.WaitGroup
+var num int32
 
 func main() {
 	log.Print("start")
@@ -60,14 +61,14 @@ func main() {
 	}
 
 	en := 0
-	for _, ss := range s{
+	for _, ss := range s {
 		if strings.HasSuffix(ss, "fuckbaiduyun") {
 			en++
 		}
 	}
 
 	doen := false
-	if en > total / 2 {
+	if en > total/2 {
 		doen = true
 	}
 	if en == total {
@@ -77,29 +78,45 @@ func main() {
 		doen = true
 	}
 
+	num = 0
 
-	for _, ss := range s{
+	for _, ss := range s {
 
 		if strings.HasPrefix(filepath.Base(ss), "fuckbaiduyun") {
 			continue
 		}
 		if strings.HasSuffix(filepath.Base(ss), "fuckbaiduyun") {
 			if !doen {
-				workResultLock.Add(1)
-				go defuck(ss)
+				if num < 1000 {
+					atomic.AddInt32(&num, 1)
+					workResultLock.Add(1)
+					go defuck(ss, true)
+				} else {
+					defuck(ss, false)
+				}
 			}
 		} else {
 			if doen {
-				workResultLock.Add(1)
-				go fuck(ss)
+				if num < 1000 {
+					atomic.AddInt32(&num, 1)
+					workResultLock.Add(1)
+					go fuck(ss, true)
+				} else {
+					fuck(ss, false)
+				}
 			}
 		}
 	}
 	workResultLock.Wait()
 }
 
-func defuck(ss string) {
+func defuck(ss string, flag bool) {
 	log.Print("start back : ", ss)
+
+	if flag {
+		defer workResultLock.Done()
+		defer atomic.AddInt32(&num, -1)
+	}
 
 	ifile, err := os.Open(ss)
 	if err != nil {
@@ -107,7 +124,6 @@ func defuck(ss string) {
 		return
 	}
 	defer ifile.Close()
-
 
 	// Open file for writing
 	ofile, err := os.OpenFile(strings.TrimSuffix(ss, ".fuckbaiduyun"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
@@ -117,12 +133,11 @@ func defuck(ss string) {
 	}
 	defer ofile.Close()
 
-
 	bufferedReader := bufio.NewReader(ifile)
 
 	bufferedWriter := bufio.NewWriter(ofile)
 
-	for i := 0; i < len("fuckbaiduyun"); i++{
+	for i := 0; i < len("fuckbaiduyun"); i++ {
 		bufferedReader.ReadByte()
 	}
 
@@ -143,7 +158,7 @@ func defuck(ss string) {
 		numBytesWrite, err := bufferedWriter.Write(byteSlice[:numBytesRead])
 		if err != nil || numBytesRead != numBytesWrite {
 			log.Fatal(err)
-			log.Fatal(numBytesRead,numBytesWrite)
+			log.Fatal(numBytesRead, numBytesWrite)
 			return
 		}
 
@@ -157,11 +172,15 @@ func defuck(ss string) {
 		log.Fatal(err)
 	}
 
-	workResultLock.Done()
 }
 
-func fuck(ss string) {
+func fuck(ss string, flag bool) {
 	log.Print("start fuck : ", ss)
+
+	if flag {
+		defer workResultLock.Done()
+		defer atomic.AddInt32(&num, -1)
+	}
 
 	ifile, err := os.Open(ss)
 	if err != nil {
@@ -170,7 +189,6 @@ func fuck(ss string) {
 	}
 	defer ifile.Close()
 
-
 	// Open file for writing
 	ofile, err := os.OpenFile(ss+".fuckbaiduyun", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
@@ -178,7 +196,6 @@ func fuck(ss string) {
 		return
 	}
 	defer ofile.Close()
-
 
 	bufferedReader := bufio.NewReader(ifile)
 
@@ -204,7 +221,7 @@ func fuck(ss string) {
 		numBytesWrite, err := bufferedWriter.Write(byteSlice[:numBytesRead])
 		if err != nil || numBytesRead != numBytesWrite {
 			log.Fatal(err)
-			log.Fatal(numBytesRead,numBytesWrite)
+			log.Fatal(numBytesRead, numBytesWrite)
 			return
 		}
 
@@ -217,6 +234,4 @@ func fuck(ss string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	workResultLock.Done()
 }
