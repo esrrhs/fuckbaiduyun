@@ -87,7 +87,7 @@ func main() {
 		}
 		if strings.HasSuffix(filepath.Base(ss), "fuckbaiduyun") {
 			if !doen {
-				if num < 1000 {
+				if num < 100 {
 					atomic.AddInt32(&num, 1)
 					workResultLock.Add(1)
 					go defuck(ss, true)
@@ -97,7 +97,7 @@ func main() {
 			}
 		} else {
 			if doen {
-				if num < 1000 {
+				if num < 100 {
 					atomic.AddInt32(&num, 1)
 					workResultLock.Add(1)
 					go fuck(ss, true)
