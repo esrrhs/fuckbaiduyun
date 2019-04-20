@@ -123,15 +123,14 @@ func defuck(ss string, flag bool) {
 		log.Fatal(err)
 		return
 	}
-	defer ifile.Close()
 
 	// Open file for writing
 	ofile, err := os.OpenFile(strings.TrimSuffix(ss, ".fuckbaiduyun"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		log.Fatal(err)
+		ifile.Close()
 		return
 	}
-	defer ofile.Close()
 
 	bufferedReader := bufio.NewReader(ifile)
 
@@ -152,6 +151,8 @@ func defuck(ss string, flag bool) {
 
 		if err != nil {
 			log.Fatal(err)
+			ifile.Close()
+			ofile.Close()
 			return
 		}
 
@@ -159,6 +160,8 @@ func defuck(ss string, flag bool) {
 		if err != nil || numBytesRead != numBytesWrite {
 			log.Fatal(err)
 			log.Fatal(numBytesRead, numBytesWrite)
+			ifile.Close()
+			ofile.Close()
 			return
 		}
 
@@ -167,9 +170,13 @@ func defuck(ss string, flag bool) {
 
 	log.Print("end back : ", ss)
 
+	ifile.Close()
+	ofile.Close()
+
 	err = os.Remove(ss)
 	if err != nil {
 		log.Fatal(err)
+		return
 	}
 
 }
@@ -187,15 +194,14 @@ func fuck(ss string, flag bool) {
 		log.Fatal(err)
 		return
 	}
-	defer ifile.Close()
 
 	// Open file for writing
 	ofile, err := os.OpenFile(ss+".fuckbaiduyun", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		log.Fatal(err)
+		ifile.Close()
 		return
 	}
-	defer ofile.Close()
 
 	bufferedReader := bufio.NewReader(ifile)
 
@@ -215,6 +221,8 @@ func fuck(ss string, flag bool) {
 
 		if err != nil {
 			log.Fatal(err)
+			ifile.Close()
+			ofile.Close()
 			return
 		}
 
@@ -222,6 +230,8 @@ func fuck(ss string, flag bool) {
 		if err != nil || numBytesRead != numBytesWrite {
 			log.Fatal(err)
 			log.Fatal(numBytesRead, numBytesWrite)
+			ifile.Close()
+			ofile.Close()
 			return
 		}
 
@@ -230,8 +240,12 @@ func fuck(ss string, flag bool) {
 
 	log.Print("end fuck : ", ss)
 
+	ifile.Close()
+	ofile.Close()
+
 	err = os.Remove(ss)
 	if err != nil {
 		log.Fatal(err)
+		return
 	}
 }
