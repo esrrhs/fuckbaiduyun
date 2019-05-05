@@ -12,6 +12,18 @@ import (
 	"sync/atomic"
 )
 
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	//os.Stat获取文件信息
+	if err != nil {
+		if os.IsExist(err) {
+			return true
+		}
+		return false
+	}
+	return true
+}
+
 func getallfiles(pathname string, s []string) ([]string, error) {
 	rd, err := ioutil.ReadDir(pathname)
 	if err != nil {
@@ -36,6 +48,8 @@ func getallfiles(pathname string, s []string) ([]string, error) {
 
 var workResultLock sync.WaitGroup
 var num int32
+var jobtotal int32
+var jobdone int32
 
 func main() {
 	log.Print("start")
@@ -48,7 +62,32 @@ func main() {
 		return
 	}
 
-	log.Print("get all file done")
+	log.Print("get all file done ", len(s))
+
+	for _, ss := range s {
+
+		if strings.HasPrefix(filepath.Base(ss), "fuckbaiduyun") {
+			continue
+		}
+
+		if strings.HasSuffix(filepath.Base(ss), "fuckbaiduyun") {
+			if exists(strings.TrimSuffix(ss, ".fuckbaiduyun")) {
+				err = os.Remove(ss)
+				if err != nil {
+					log.Fatal(err)
+					return
+				}
+			}
+		}
+	}
+
+	var s1 []string
+	s, err = getallfiles("./", s1)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+	log.Print("fix all file done ", len(s))
 
 	total := 0
 	for _, ss := range s {
@@ -62,7 +101,7 @@ func main() {
 
 	en := 0
 	for _, ss := range s {
-		if strings.HasSuffix(ss, "fuckbaiduyun") {
+		if strings.HasSuffix(filepath.Base(ss), "fuckbaiduyun") {
 			en++
 		}
 	}
@@ -79,6 +118,25 @@ func main() {
 	}
 
 	num = 0
+
+	jobdone = 0
+	jobtotal = 0
+
+	for _, ss := range s {
+
+		if strings.HasPrefix(filepath.Base(ss), "fuckbaiduyun") {
+			continue
+		}
+		if strings.HasSuffix(filepath.Base(ss), "fuckbaiduyun") {
+			if !doen {
+				jobtotal++
+			}
+		} else {
+			if doen {
+				jobtotal++
+			}
+		}
+	}
 
 	for _, ss := range s {
 
@@ -125,7 +183,7 @@ func defuck(ss string, flag bool) {
 	}
 
 	// Open file for writing
-	ofile, err := os.OpenFile(strings.TrimSuffix(ss, ".fuckbaiduyun"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	ofile, err := os.OpenFile(strings.TrimSuffix(ss, ".fuckbaiduyun"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
 		log.Fatal(err)
 		ifile.Close()
@@ -168,8 +226,6 @@ func defuck(ss string, flag bool) {
 		bufferedWriter.Flush()
 	}
 
-	log.Print("end back : ", ss)
-
 	ifile.Close()
 	ofile.Close()
 
@@ -179,6 +235,9 @@ func defuck(ss string, flag bool) {
 		return
 	}
 
+	atomic.AddInt32(&jobdone, 1)
+
+	log.Print("end back : ", jobdone, "/", jobtotal, " ", ss)
 }
 
 func fuck(ss string, flag bool) {
@@ -238,8 +297,6 @@ func fuck(ss string, flag bool) {
 		bufferedWriter.Flush()
 	}
 
-	log.Print("end fuck : ", ss)
-
 	ifile.Close()
 	ofile.Close()
 
@@ -248,4 +305,8 @@ func fuck(ss string, flag bool) {
 		log.Fatal(err)
 		return
 	}
+
+	atomic.AddInt32(&jobdone, 1)
+
+	log.Print("end fuck : ", jobdone, "/", jobtotal, " ", ss)
 }
