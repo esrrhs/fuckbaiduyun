@@ -1,312 +1,178 @@
+//source: http://doc.qt.io/qt-5/qtwidgets-widgets-lineedits-example.html
+
 package main
 
 import (
-	"bufio"
-	"fmt"
-	"io/ioutil"
-	"log"
+	"github.com/therecipe/qt/core"
+	"github.com/therecipe/qt/gui"
+	"github.com/therecipe/qt/widgets"
 	"os"
 	"path/filepath"
-	"strings"
-	"sync"
-	"sync/atomic"
 )
 
-func exists(path string) bool {
-	_, err := os.Stat(path)
-	//os.Stat获取文件信息
-	if err != nil {
-		if os.IsExist(err) {
-			return true
-		}
-		return false
-	}
-	return true
-}
-
-func getallfiles(pathname string, s []string) ([]string, error) {
-	rd, err := ioutil.ReadDir(pathname)
-	if err != nil {
-		fmt.Println("read dir fail:", err)
-		return s, err
-	}
-	for _, fi := range rd {
-		if fi.IsDir() {
-			fullDir := pathname + "/" + fi.Name()
-			s, err = getallfiles(fullDir, s)
-			if err != nil {
-				fmt.Println("read dir fail:", err)
-				return s, err
-			}
-		} else {
-			fullName := pathname + "/" + fi.Name()
-			s = append(s, fullName)
-		}
-	}
-	return s, nil
-}
-
-var workResultLock sync.WaitGroup
-var num int32
-var jobtotal int32
-var jobdone int32
-
 func main() {
-	log.Print("start")
+	widgets.NewQApplication(len(os.Args), os.Args)
 
-	var s []string
+	var window = widgets.NewQMainWindow(nil, 0)
+	var centralWidget = widgets.NewQWidget(window, 0)
 
-	s, err := getallfiles("./", s)
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
+	echoGroup := widgets.NewQGroupBox2("", nil)
 
-	log.Print("get all file done ", len(s))
+	inputLabel := widgets.NewQLabel2("输入", nil, 0)
+	input := widgets.NewQLineEdit(nil)
+	input.SetText(filepath.Dir(os.Args[0]))
 
-	for _, ss := range s {
+	outputLabel := widgets.NewQLabel2("输出", nil, 0)
+	output := widgets.NewQLineEdit(nil)
 
-		if strings.HasPrefix(filepath.Base(ss), "fuckbaiduyun") {
-			continue
-		}
+	inputButton := widgets.NewQPushButton2("选择", nil)
+	outputButton := widgets.NewQPushButton2("选择", nil)
 
-		if strings.HasSuffix(filepath.Base(ss), "fuckbaiduyun") {
-			if exists(strings.TrimSuffix(ss, ".fuckbaiduyun")) {
-				err = os.Remove(ss)
-				if err != nil {
-					log.Fatal(err)
-					return
-				}
-			}
-		}
-	}
+	inputButton.ConnectClicked(func(checked bool) {
+		w := widgets.NewQFileDialog2(nil, "选择输入目录", "", "")
+		w.SetFileMode(widgets.QFileDialog__DirectoryOnly)
+		input.SetText(w.GetExistingDirectory(nil, "选择输入目录", "", 0))
+	})
+	outputButton.ConnectClicked(func(checked bool) {
+		w := widgets.NewQFileDialog2(nil, "选择输入目录", "", "")
+		w.SetFileMode(widgets.QFileDialog__DirectoryOnly)
+		output.SetText(w.GetExistingDirectory(nil, "选择输入目录", "", 0))
+	})
 
-	var s1 []string
-	s, err = getallfiles("./", s1)
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-	log.Print("fix all file done ", len(s))
+	split := widgets.NewQComboBox(nil)
+	split.AddItems([]string{"1G", "4G", "10G"})
+	do := widgets.NewQComboBox(nil)
+	do.AddItems([]string{"加密", "解密"})
+	fuckButton := widgets.NewQPushButton2("GO", nil)
 
-	total := 0
-	for _, ss := range s {
+	cur := widgets.NewQProgressBar(nil)
+	cur.SetValue(80)
 
-		if strings.HasPrefix(filepath.Base(ss), "fuckbaiduyun") {
-			continue
-		}
+	var echoLayout = widgets.NewQGridLayout2()
+	echoLayout.AddWidget(inputLabel, 0, 0, 0)
+	echoLayout.AddWidget(input, 0, 1, 0)
+	echoLayout.AddWidget(inputButton, 0, 2, 0)
+	echoLayout.AddWidget(outputLabel, 1, 0, 0)
+	echoLayout.AddWidget(output, 1, 1, 0)
+	echoLayout.AddWidget(outputButton, 1, 2, 0)
+	echoLayout.AddWidget(split, 2, 0, 0)
+	echoLayout.AddWidget(do, 2, 1, 0)
+	echoLayout.AddWidget(fuckButton, 2, 2, 0)
+	echoLayout.AddWidget3(cur, 3, 0, 3, 3, 0)
+	echoGroup.SetLayout(echoLayout)
 
-		total++
-	}
+	var layout = widgets.NewQGridLayout2()
+	layout.AddWidget(echoGroup, 0, 0, 0)
 
-	en := 0
-	for _, ss := range s {
-		if strings.HasSuffix(filepath.Base(ss), "fuckbaiduyun") {
-			en++
-		}
-	}
+	centralWidget.SetLayout(layout)
+	window.SetCentralWidget(centralWidget)
+	window.SetMinimumWidth(500)
+	window.SetWindowTitle("fuck baiduyun")
+	window.Show()
 
-	doen := false
-	if en > total/2 {
-		doen = true
-	}
-	if en == total {
-		doen = false
-	}
-	if en == 0 {
-		doen = true
-	}
-
-	num = 0
-
-	jobdone = 0
-	jobtotal = 0
-
-	for _, ss := range s {
-
-		if strings.HasPrefix(filepath.Base(ss), "fuckbaiduyun") {
-			continue
-		}
-		if strings.HasSuffix(filepath.Base(ss), "fuckbaiduyun") {
-			if !doen {
-				jobtotal++
-			}
-		} else {
-			if doen {
-				jobtotal++
-			}
-		}
-	}
-
-	for _, ss := range s {
-
-		if strings.HasPrefix(filepath.Base(ss), "fuckbaiduyun") {
-			continue
-		}
-		if strings.HasSuffix(filepath.Base(ss), "fuckbaiduyun") {
-			if !doen {
-				if num < 100 {
-					atomic.AddInt32(&num, 1)
-					workResultLock.Add(1)
-					go defuck(ss, true)
-				} else {
-					defuck(ss, false)
-				}
-			}
-		} else {
-			if doen {
-				if num < 100 {
-					atomic.AddInt32(&num, 1)
-					workResultLock.Add(1)
-					go fuck(ss, true)
-				} else {
-					fuck(ss, false)
-				}
-			}
-		}
-	}
-	workResultLock.Wait()
+	widgets.QApplication_Exec()
 }
 
-func defuck(ss string, flag bool) {
-	log.Print("start back : ", ss)
-
-	if flag {
-		defer workResultLock.Done()
-		defer atomic.AddInt32(&num, -1)
-	}
-
-	ifile, err := os.Open(ss)
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-
-	// Open file for writing
-	ofile, err := os.OpenFile(strings.TrimSuffix(ss, ".fuckbaiduyun"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
-	if err != nil {
-		log.Fatal(err)
-		ifile.Close()
-		return
-	}
-
-	bufferedReader := bufio.NewReader(ifile)
-
-	bufferedWriter := bufio.NewWriter(ofile)
-
-	for i := 0; i < len("fuckbaiduyun"); i++ {
-		bufferedReader.ReadByte()
-	}
-
-	byteSlice := make([]byte, 1024*1024)
-
-	for {
-		numBytesRead, err := bufferedReader.Read(byteSlice)
-
-		if numBytesRead == 0 {
-			break
+func echoChanged(echoLineEdit *widgets.QLineEdit, index int) {
+	switch index {
+	case 0:
+		{
+			echoLineEdit.SetEchoMode(widgets.QLineEdit__Normal)
 		}
 
-		if err != nil {
-			log.Fatal(err)
-			ifile.Close()
-			ofile.Close()
-			return
+	case 1:
+		{
+			echoLineEdit.SetEchoMode(widgets.QLineEdit__Password)
 		}
 
-		numBytesWrite, err := bufferedWriter.Write(byteSlice[:numBytesRead])
-		if err != nil || numBytesRead != numBytesWrite {
-			log.Fatal(err)
-			log.Fatal(numBytesRead, numBytesWrite)
-			ifile.Close()
-			ofile.Close()
-			return
+	case 2:
+		{
+			echoLineEdit.SetEchoMode(widgets.QLineEdit__PasswordEchoOnEdit)
 		}
 
-		bufferedWriter.Flush()
+	case 3:
+		{
+			echoLineEdit.SetEchoMode(widgets.QLineEdit__NoEcho)
+		}
 	}
-
-	ifile.Close()
-	ofile.Close()
-
-	err = os.Remove(ss)
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-
-	atomic.AddInt32(&jobdone, 1)
-
-	log.Print("end back : ", jobdone, "/", jobtotal, " ", ss)
 }
 
-func fuck(ss string, flag bool) {
-	log.Print("start fuck : ", ss)
-
-	if flag {
-		defer workResultLock.Done()
-		defer atomic.AddInt32(&num, -1)
-	}
-
-	ifile, err := os.Open(ss)
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-
-	// Open file for writing
-	ofile, err := os.OpenFile(ss+".fuckbaiduyun", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
-	if err != nil {
-		log.Fatal(err)
-		ifile.Close()
-		return
-	}
-
-	bufferedReader := bufio.NewReader(ifile)
-
-	bufferedWriter := bufio.NewWriter(ofile)
-
-	bufferedWriter.WriteString("fuckbaiduyun")
-	bufferedWriter.Flush()
-
-	byteSlice := make([]byte, 1024*1024)
-
-	for {
-		numBytesRead, err := bufferedReader.Read(byteSlice)
-
-		if numBytesRead == 0 {
-			break
+func validatorChanged(validatorLineEdit *widgets.QLineEdit, index int) {
+	switch index {
+	case 0:
+		{
+			validatorLineEdit.SetValidator(nil)
 		}
 
-		if err != nil {
-			log.Fatal(err)
-			ifile.Close()
-			ofile.Close()
-			return
+	case 1:
+		{
+			validatorLineEdit.SetValidator(gui.NewQIntValidator(validatorLineEdit))
 		}
 
-		numBytesWrite, err := bufferedWriter.Write(byteSlice[:numBytesRead])
-		if err != nil || numBytesRead != numBytesWrite {
-			log.Fatal(err)
-			log.Fatal(numBytesRead, numBytesWrite)
-			ifile.Close()
-			ofile.Close()
-			return
+	case 2:
+		{
+			validatorLineEdit.SetValidator(gui.NewQDoubleValidator2(-999.0, 999.0, 2, validatorLineEdit))
+		}
+	}
+
+	validatorLineEdit.Clear()
+}
+
+func alignmentChanged(alignmentLineEdit *widgets.QLineEdit, index int) {
+	switch index {
+	case 0:
+		{
+			alignmentLineEdit.SetAlignment(core.Qt__AlignLeft)
 		}
 
-		bufferedWriter.Flush()
+	case 1:
+		{
+			alignmentLineEdit.SetAlignment(core.Qt__AlignCenter)
+		}
+
+	case 2:
+		{
+			alignmentLineEdit.SetAlignment(core.Qt__AlignRight)
+		}
 	}
+}
 
-	ifile.Close()
-	ofile.Close()
+func inputMaskChanged(inputMaskLineEdit *widgets.QLineEdit, index int) {
+	switch index {
+	case 0:
+		{
+			inputMaskLineEdit.SetInputMask("")
+		}
 
-	err = os.Remove(ss)
-	if err != nil {
-		log.Fatal(err)
-		return
+	case 1:
+		{
+			inputMaskLineEdit.SetInputMask("+99 99 99 99 99;_")
+		}
+
+	case 2:
+		{
+			inputMaskLineEdit.SetInputMask("0000-00-00")
+			inputMaskLineEdit.SetText("00000000")
+			inputMaskLineEdit.SetCursorPosition(0)
+		}
+
+	case 3:
+		{
+			inputMaskLineEdit.SetInputMask(">AAAAA-AAAAA-AAAAA-AAAAA-AAAAA;#")
+		}
 	}
+}
 
-	atomic.AddInt32(&jobdone, 1)
+func accessChanged(accessLineEdit *widgets.QLineEdit, index int) {
+	switch index {
+	case 0:
+		{
+			accessLineEdit.SetReadOnly(false)
+		}
 
-	log.Print("end fuck : ", jobdone, "/", jobtotal, " ", ss)
+	case 1:
+		{
+			accessLineEdit.SetReadOnly(true)
+		}
+	}
 }
