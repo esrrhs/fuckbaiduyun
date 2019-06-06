@@ -3,13 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/therecipe/qt/core"
 	"github.com/therecipe/qt/widgets"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func main() {
@@ -46,7 +46,7 @@ func main() {
 	pass.SetText("123456")
 
 	split := widgets.NewQComboBox(nil)
-	split.AddItems([]string{"1G", "4G", "10G"})
+	split.AddItems([]string{"1G", "4G", "10G", "20G"})
 	do := widgets.NewQComboBox(nil)
 	do.AddItems([]string{"加密", "解密"})
 	fuckButton := widgets.NewQPushButton2("GO", nil)
@@ -65,37 +65,56 @@ func main() {
 	})
 
 	fuckButton.ConnectClicked(func(checked bool) {
-		defer func() {
-			if err := recover(); err != nil {
+
+		errstr := new(string)
+		jobtotal := new(int32)
+		jobdone := new(int32)
+
+		t := core.NewQTimer(nil)
+		t.ConnectEvent(func(e *core.QEvent) bool {
+
+			if len(*errstr) > 0 {
+				t.DisconnectEvent()
 				a := widgets.NewQMessageBox(nil)
-				a.SetText(fmt.Sprintf("%v", err))
+				a.SetText(*errstr)
 				a.Show()
+				return true
 			}
+			if *jobtotal != 0 {
+				cur.SetValue(int(*jobdone * 100 / *jobtotal))
+			}
+			return true
+
+		})
+		t.Start(100)
+
+		go func() {
+
+			defer func() {
+				if err := recover(); err != nil {
+					*errstr = fmt.Sprintf("%v", err)
+				}
+			}()
+
+			gConfig.Split = split.CurrentText()
+			gConfig.Do = do.CurrentText()
+			gConfig.Input = input.Text()
+			gConfig.Output = output.Text()
+			gConfig.Pass = pass.Text()
+			saveJson(gConfig)
+
+			cur.SetValue(0)
+
+			split, _ := strconv.Atoi(strings.TrimRight(split.CurrentText(), "G"))
+
+			dojob(jobtotal, jobdone, input.Text(), output.Text(), do.CurrentText() == "加密", pass.Text(),
+				1000*1000*1000*split)
+
+			cur.SetValue(100)
+
+			*errstr = "ok"
 		}()
 
-		gConfig.Split = split.CurrentText()
-		gConfig.Do = do.CurrentText()
-		gConfig.Input = input.Text()
-		gConfig.Output = output.Text()
-		gConfig.Pass = pass.Text()
-		saveJson(gConfig)
-
-		cur.SetValue(0)
-
-		var jobtotal int32
-		var jobdone int32
-
-		split, _ := strconv.Atoi(strings.TrimRight(split.CurrentText(), "G"))
-
-		dojob(&jobtotal, &jobdone, input.Text(), output.Text(), do.CurrentText() == "加密", pass.Text(),
-			1024*1024*1024*split)
-
-		for jobtotal > jobdone {
-			cur.SetValue(int(jobdone * 100 / jobtotal))
-			time.Sleep(time.Duration(100) * time.Millisecond)
-		}
-
-		cur.SetValue(100)
 	})
 
 	var echoLayout = widgets.NewQGridLayout2()
