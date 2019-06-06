@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/therecipe/qt/widgets"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -41,13 +45,6 @@ func main() {
 	pass := widgets.NewQLineEdit(nil)
 	pass.SetText("123456")
 
-	swapButton := widgets.NewQPushButton2("交换", nil)
-	swapButton.ConnectClicked(func(checked bool) {
-		tmp := input.Text()
-		input.SetText(output.Text())
-		output.SetText(tmp)
-	})
-
 	split := widgets.NewQComboBox(nil)
 	split.AddItems([]string{"1G", "4G", "10G"})
 	do := widgets.NewQComboBox(nil)
@@ -55,6 +52,17 @@ func main() {
 	fuckButton := widgets.NewQPushButton2("GO", nil)
 
 	cur := widgets.NewQProgressBar(nil)
+	swapButton := widgets.NewQPushButton2("交换", nil)
+	swapButton.ConnectClicked(func(checked bool) {
+		tmp := input.Text()
+		input.SetText(output.Text())
+		output.SetText(tmp)
+		if do.CurrentText() == "加密" {
+			do.SetCurrentText("解密")
+		} else {
+			do.SetCurrentText("加密")
+		}
+	})
 
 	fuckButton.ConnectClicked(func(checked bool) {
 		defer func() {
@@ -62,17 +70,25 @@ func main() {
 				a := widgets.NewQMessageBox(nil)
 				a.SetText(fmt.Sprintf("%v", err))
 				a.Show()
-				//os.Exit(1)
 			}
 		}()
+
+		gConfig.Split = split.CurrentText()
+		gConfig.Do = do.CurrentText()
+		gConfig.Input = input.Text()
+		gConfig.Output = output.Text()
+		gConfig.Pass = pass.Text()
+		saveJson(gConfig)
 
 		cur.SetValue(0)
 
 		var jobtotal int32
 		var jobdone int32
 
+		split, _ := strconv.Atoi(strings.TrimRight(split.CurrentText(), "G"))
+
 		dojob(&jobtotal, &jobdone, input.Text(), output.Text(), do.CurrentText() == "加密", pass.Text(),
-			1024*1024)
+			1024*1024*1024*split)
 
 		for jobtotal > jobdone {
 			cur.SetValue(int(jobdone * 100 / jobtotal))
@@ -103,6 +119,16 @@ func main() {
 	var layout = widgets.NewQGridLayout2()
 	layout.AddWidget(echoGroup, 0, 0, 0)
 
+	lg := loadJson()
+	if lg != nil {
+		gConfig = *lg
+		do.SetCurrentText(gConfig.Do)
+		split.SetCurrentText(gConfig.Split)
+		input.SetText(gConfig.Input)
+		output.SetText(gConfig.Output)
+		pass.SetText(gConfig.Pass)
+	}
+
 	centralWidget.SetLayout(layout)
 	window.SetCentralWidget(centralWidget)
 	window.SetMinimumWidth(500)
@@ -110,4 +136,47 @@ func main() {
 	window.Show()
 
 	widgets.QApplication_Exec()
+}
+
+type Config struct {
+	Input  string `json:"Input"`
+	Output string `json:"Output"`
+	Do     string `json:"Do"`
+	Split  string `json:"Split"`
+	Pass   string `json:"Pass"`
+}
+
+var gConfig Config
+
+func saveJson(c Config) {
+	jsonFile, err := os.OpenFile(".fuckbaiduyun.json",
+		os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return
+	}
+	defer jsonFile.Close()
+
+	str, err := json.Marshal(&c)
+	if err != nil {
+		return
+	}
+	jsonFile.Write(str)
+
+}
+func loadJson() *Config {
+	jsonFile, err := os.Open(".fuckbaiduyun.json")
+	if err != nil {
+		return nil
+	}
+	defer jsonFile.Close()
+
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+	var c Config
+
+	err = json.Unmarshal(byteValue, &c)
+	if err != nil {
+		return nil
+	}
+
+	return &c
 }

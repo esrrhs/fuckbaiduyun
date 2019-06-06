@@ -125,7 +125,7 @@ func dojob(jobtotal *int32, jobdone *int32, input string, output string, doen bo
 		}
 	}
 
-	loggo.Info("all job file jobtotal %v", jobtotal)
+	loggo.Info("all job file jobtotal %v", *jobtotal)
 
 	for _, ss := range s {
 
@@ -152,6 +152,7 @@ func dojob(jobtotal *int32, jobdone *int32, input string, output string, doen bo
 func defuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss string, flag bool,
 	jobdone *int32, jobtotal *int32, done map[string]int, input string, output string) {
 
+	ss = filepath.Clean(ss)
 	loggo.Info("start back : %v", ss)
 
 	if flag {
@@ -169,9 +170,11 @@ func defuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss
 	folderPath := filepath.Dir(outputss)
 	os.MkdirAll(folderPath, os.ModePerm)
 
+	inputfolderPath := filepath.Dir(ss)
+
 	var son []string
 
-	rd, err := ioutil.ReadDir(folderPath)
+	rd, err := ioutil.ReadDir(inputfolderPath)
 	if err != nil {
 		showError(err)
 	}
@@ -180,7 +183,7 @@ func defuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss
 			m, _ := filepath.Match("*.fuckbaiduyun.*", fi.Name())
 			if m {
 				loggo.Info("back add split: %v %v", ss, fi.Name())
-				son = append(son, folderPath+"/"+fi.Name())
+				son = append(son, inputfolderPath+"/"+fi.Name())
 			}
 		}
 	}
@@ -229,6 +232,7 @@ func defuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss
 					}
 					post++
 					bufferedReader = bufio.NewReader(ifile)
+					loggo.Info("start back : %v", ss+"."+strconv.Itoa(post))
 					continue
 				} else {
 					fileend = true
@@ -273,11 +277,6 @@ func defuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss
 
 	ifile.Close()
 	ofile.Close()
-
-	err = os.Remove(ss)
-	if err != nil {
-		showError(err)
-	}
 
 	atomic.AddInt32(jobdone, 1)
 
@@ -336,6 +335,7 @@ func loadDone(output string, done map[string]int) {
 func fuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss string, flag bool,
 	jobdone *int32, jobtotal *int32, done map[string]int, input string, output string) {
 
+	ss = filepath.Clean(ss)
 	loggo.Info("start fuck : %v", ss)
 
 	if flag {
@@ -429,6 +429,7 @@ func fuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss s
 				bufferedWriter = bufio.NewWriter(ofile)
 				post++
 				cur -= split
+				loggo.Info("start fuck : %v", outputss+".fuckbaiduyun"+"."+strconv.Itoa(post))
 			}
 
 			numBytesWrite, err := bufferedWriter.Write(d)
