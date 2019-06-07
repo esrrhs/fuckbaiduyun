@@ -33,12 +33,12 @@ func main() {
 	inputButton.ConnectClicked(func(checked bool) {
 		w := widgets.NewQFileDialog2(nil, "选择输入目录", "", "")
 		w.SetFileMode(widgets.QFileDialog__DirectoryOnly)
-		input.SetText(w.GetExistingDirectory(nil, "选择输入目录", "", 0))
+		input.SetText(w.GetExistingDirectory(nil, "选择输入目录", "", 0) + "/")
 	})
 	outputButton.ConnectClicked(func(checked bool) {
 		w := widgets.NewQFileDialog2(nil, "选择输出目录", "", "")
 		w.SetFileMode(widgets.QFileDialog__DirectoryOnly)
-		output.SetText(w.GetExistingDirectory(nil, "选择输出目录", "", 0))
+		output.SetText(w.GetExistingDirectory(nil, "选择输出目录", "", 0) + "/")
 	})
 
 	passLabel := widgets.NewQLabel2("密码：", nil, 0)
@@ -52,6 +52,7 @@ func main() {
 	fuckButton := widgets.NewQPushButton2("GO", nil)
 
 	cur := widgets.NewQProgressBar(nil)
+	curf := widgets.NewQProgressBar(nil)
 	swapButton := widgets.NewQPushButton2("交换", nil)
 	swapButton.ConnectClicked(func(checked bool) {
 		tmp := input.Text()
@@ -69,6 +70,18 @@ func main() {
 		errstr := new(string)
 		jobtotal := new(int32)
 		jobdone := new(int32)
+		filetotal := new(int64)
+		filedone := new(int64)
+
+		input.SetDisabled(true)
+		output.SetDisabled(true)
+		pass.SetDisabled(true)
+		inputButton.SetDisabled(true)
+		outputButton.SetDisabled(true)
+		split.SetDisabled(true)
+		do.SetDisabled(true)
+		fuckButton.SetDisabled(true)
+		swapButton.SetDisabled(true)
 
 		t := core.NewQTimer(nil)
 		t.ConnectEvent(func(e *core.QEvent) bool {
@@ -78,10 +91,24 @@ func main() {
 				a := widgets.NewQMessageBox(nil)
 				a.SetText(*errstr)
 				a.Show()
+
+				input.SetDisabled(false)
+				output.SetDisabled(false)
+				pass.SetDisabled(false)
+				inputButton.SetDisabled(false)
+				outputButton.SetDisabled(false)
+				split.SetDisabled(false)
+				do.SetDisabled(false)
+				fuckButton.SetDisabled(false)
+				swapButton.SetDisabled(false)
+
 				return true
 			}
 			if *jobtotal != 0 {
 				cur.SetValue(int(*jobdone * 100 / *jobtotal))
+			}
+			if *filetotal != 0 {
+				curf.SetValue(int(*filedone * 100 / *filetotal))
 			}
 			return true
 
@@ -104,13 +131,15 @@ func main() {
 			saveJson(gConfig)
 
 			cur.SetValue(0)
+			curf.SetValue(0)
 
 			split, _ := strconv.Atoi(strings.TrimRight(split.CurrentText(), "G"))
 
-			dojob(jobtotal, jobdone, input.Text(), output.Text(), do.CurrentText() == "加密", pass.Text(),
+			dojob(jobtotal, jobdone, filetotal, filedone, input.Text(), output.Text(), do.CurrentText() == "加密", pass.Text(),
 				1000*1000*1000*split)
 
 			cur.SetValue(100)
+			curf.SetValue(100)
 
 			*errstr = "ok"
 		}()
@@ -133,6 +162,7 @@ func main() {
 	echoLayout.AddWidget(do, 3, 1, 0)
 	echoLayout.AddWidget(fuckButton, 3, 2, 0)
 	echoLayout.AddWidget3(cur, 4, 0, 3, 3, 0)
+	echoLayout.AddWidget3(curf, 7, 0, 3, 3, 0)
 	echoGroup.SetLayout(echoLayout)
 
 	var layout = widgets.NewQGridLayout2()
