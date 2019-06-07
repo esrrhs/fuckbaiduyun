@@ -14,3 +14,4 @@ https://github.com/esrrhs/fuckbaiduyun/releases
 
 ## 示例
 ![image](show.png)
+![image](showwin.png)
