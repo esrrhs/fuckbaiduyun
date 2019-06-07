@@ -55,8 +55,12 @@ func showErrorStr(err string) {
 func dojob(jobtotal *int32, jobdone *int32, filetotal *int64, filedone *int64, input string, output string, doen bool,
 	key string, split int) {
 
+	input = input + "/"
+	output = output + "/"
 	input = filepath.FromSlash(input)
 	output = filepath.FromSlash(output)
+	input = filepath.Clean(input)
+	output = filepath.Clean(output)
 
 	var done map[string]int
 	done = make(map[string]int)
