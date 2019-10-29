@@ -66,7 +66,7 @@ func dojob(jobtotal *int32, jobdone *int32, filetotal *int64, filedone *int64, i
 	done = make(map[string]int)
 	var workResultLock sync.WaitGroup
 
-	loggo.Ini(loggo.Config{loggo.LEVEL_DEBUG, "fuck", 2})
+	loggo.Ini(loggo.Config{Level: loggo.LEVEL_DEBUG, Prefix: "fuck", MaxDay: 2})
 
 	loggo.Info("start")
 
