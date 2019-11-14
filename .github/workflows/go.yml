@@ -18,8 +18,10 @@ jobs:
 
     - name: Get dependencies
       run: |
+        git config --system core.longpaths true
         go get -v -t -d ./...
 
     - name: Build
       run: |
+        git config --system core.longpaths true
         go get -v github.com/therecipe/qt/cmd/... && for /f %v in ('go env GOPATH') do %v\bin\qtdeploy test desktop .
