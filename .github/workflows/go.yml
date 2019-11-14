@@ -25,4 +25,4 @@ jobs:
       run: |
         git config --system core.longpaths true
         go get -v github.com/therecipe/qt/cmd/...
-        C:\Users\runneradmin\go\bin\qtdeploy test desktop .
+        go build -v .
