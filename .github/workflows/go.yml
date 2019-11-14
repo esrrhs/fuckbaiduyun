@@ -4,7 +4,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: windows-2019
+    runs-on: macOS-latest
     steps:
 
     - name: Set up Go 1.13
@@ -18,11 +18,11 @@ jobs:
 
     - name: Get dependencies
       run: |
-        git config --system core.longpaths true
         go get -v -t -d ./...
 
     - name: Build
       run: |
-        git config --system core.longpaths true
-        go get -v github.com/therecipe/qt/cmd/...
-        go build -v .
+        export GO111MODULE=off; 
+        xcode-select --install; 
+        go get -v github.com/therecipe/qt/cmd/... 
+        $(go env GOPATH)/bin/qtdeploy test desktop .
