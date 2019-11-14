@@ -26,5 +26,9 @@ jobs:
 
     - name: Build
       run: |
+        yum groupinstall "X Window System" -y
+        yum install mesa* -y
+        yum install freeglut* -y
+        yum install lrzsz -y
         export GO111MODULE=off; go get -v github.com/therecipe/qt/cmd/... && $(go env GOPATH)/bin/qtsetup test && $(go env GOPATH)/bin/qtsetup -test=false
         go build -v .
