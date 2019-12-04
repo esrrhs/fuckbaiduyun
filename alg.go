@@ -354,6 +354,128 @@ func loadDone(output string, done map[string]int) {
 	file.Close()
 }
 
+func fuckverify(key string, ss string, filetotal *int64, filedone *int64, md5str string) {
+
+	ss = filepath.FromSlash(ss)
+	ss = filepath.Clean(ss)
+	loggo.Info("start fuckverify : %v", ss)
+
+	inputfolderPath := filepath.Dir(ss)
+
+	var son []string
+
+	rd, err := ioutil.ReadDir(inputfolderPath)
+	if err != nil {
+		showError(err)
+	}
+	for _, fi := range rd {
+		if !fi.IsDir() {
+			m, _ := filepath.Match("*.fuckbaiduyun.*", fi.Name())
+			if m {
+				loggo.Info("back add split: %v %v", ss, fi.Name())
+				name := inputfolderPath + "/" + fi.Name()
+				son = append(son, filepath.FromSlash(name))
+			}
+		}
+	}
+
+	ifile, err := os.Open(ss)
+	if err != nil {
+		showError(err)
+	}
+
+	bufferedReader := bufio.NewReader(ifile)
+	fi, err := ifile.Stat()
+	if err != nil {
+		showError(err)
+	}
+	*filedone = 0
+	*filetotal = fi.Size()
+
+	h := md5.New()
+
+	byteSlice := make([]byte, 4*1024*1024)
+
+	rb := rbuffergo.New(16*1024*1024, false)
+
+	var post int
+
+	fileend := false
+	for !fileend || !rb.Empty() {
+		for !fileend && rb.Size()+len(byteSlice) < rb.Capacity() {
+
+			numBytesRead, err := bufferedReader.Read(byteSlice)
+
+			if numBytesRead == 0 {
+				find := false
+
+				for _, sf := range son {
+					if sf == ss+"."+strconv.Itoa(post) {
+						find = true
+					}
+				}
+
+				if find {
+					ifile.Close()
+					ifile, err = os.Open(ss + "." + strconv.Itoa(post))
+					if err != nil {
+						showError(err)
+					}
+					post++
+					bufferedReader = bufio.NewReader(ifile)
+					fi, err := ifile.Stat()
+					if err != nil {
+						showError(err)
+					}
+					*filedone = 0
+					*filetotal = fi.Size()
+					loggo.Info("start back : %v", ss+"."+strconv.Itoa(post))
+					continue
+				} else {
+					fileend = true
+					break
+				}
+			}
+
+			if err != nil {
+				showError(err)
+			}
+
+			rb.Write(byteSlice[:numBytesRead])
+			*filedone += int64(numBytesRead)
+		}
+
+		for !rb.Empty() {
+			if rb.Size() < 1024*1024 {
+				if !fileend {
+					break
+				}
+			}
+
+			numBytesRead := int(math.Min(float64(rb.Size()), 1024*1024))
+
+			if !rb.Read(byteSlice[0:numBytesRead]) {
+				showErrorStr("rbuffergo read fail " + ss)
+			}
+
+			d := decrypt(byteSlice[:numBytesRead], key)
+			numBytesRead = len(d)
+
+			h.Write(d)
+		}
+	}
+
+	ifile.Close()
+
+	newmd5str := fmt.Sprintf("%x", h.Sum(nil))
+
+	if newmd5str != md5str {
+		showErrorStr("fuckverify fail " + ss)
+	}
+
+	loggo.Info("fuckverify ok: %v", ss)
+}
+
 func fuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss string, flag bool,
 	jobdone *int32, jobtotal *int32, done map[string]int, input string, output string,
 	filetotal *int64, filedone *int64) {
@@ -414,6 +536,8 @@ func fuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss s
 
 	rb := rbuffergo.New(16*1024*1024, false)
 
+	h := md5.New()
+
 	var cur int
 	var post int
 
@@ -434,6 +558,8 @@ func fuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss s
 
 			rb.Write(byteSlice[:numBytesRead])
 			*filedone += int64(numBytesRead)
+
+			h.Write(byteSlice[:numBytesRead])
 		}
 
 		for !rb.Empty() {
@@ -481,6 +607,9 @@ func fuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss s
 
 	ifile.Close()
 	ofile.Close()
+
+	md5str := fmt.Sprintf("%x", h.Sum(nil))
+	fuckverify(key, outputss+".fuckbaiduyun", filetotal, filedone, md5str)
 
 	atomic.AddInt32(jobdone, 1)
 
