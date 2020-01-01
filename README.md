@@ -1,4 +1,10 @@
 # fuckbaiduyun
+
+[<img src="https://img.shields.io/github/license/esrrhs/fuckbaiduyun">](https://github.com/esrrhs/fuckbaiduyun)
+[<img src="https://img.shields.io/github/v/release/esrrhs/fuckbaiduyun">](https://github.com/esrrhs/fuckbaiduyun/releases)
+[<img src="https://img.shields.io/github/downloads/esrrhs/fuckbaiduyun/total">](https://github.com/esrrhs/fuckbaiduyun/releases)
+[<img src="https://img.shields.io/github/workflow/status/esrrhs/fuckbaiduyun/Go">](https://github.com/esrrhs/fuckbaiduyun/actions)
+
 百度网盘快速加解密工具
 
 ## 特性
