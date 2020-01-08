@@ -1,6 +1,8 @@
 # fuckbaiduyun
 
 [<img src="https://img.shields.io/github/license/esrrhs/fuckbaiduyun">](https://github.com/esrrhs/fuckbaiduyun)
+[<img src="https://img.shields.io/github/languages/top/esrrhs/fuckbaiduyun">](https://github.com/esrrhs/fuckbaiduyun)
+[![Go Report Card](https://goreportcard.com/badge/github.com/esrrhs/fuckbaiduyun)](https://goreportcard.com/report/github.com/esrrhs/fuckbaiduyun)
 [<img src="https://img.shields.io/github/v/release/esrrhs/fuckbaiduyun">](https://github.com/esrrhs/fuckbaiduyun/releases)
 [<img src="https://img.shields.io/github/downloads/esrrhs/fuckbaiduyun/total">](https://github.com/esrrhs/fuckbaiduyun/releases)
 [<img src="https://img.shields.io/github/workflow/status/esrrhs/fuckbaiduyun/Go">](https://github.com/esrrhs/fuckbaiduyun/actions)
