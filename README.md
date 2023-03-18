@@ -5,8 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/esrrhs/fuckbaiduyun)](https://goreportcard.com/report/github.com/esrrhs/fuckbaiduyun)
 [<img src="https://img.shields.io/github/v/release/esrrhs/fuckbaiduyun">](https://github.com/esrrhs/fuckbaiduyun/releases)
 [<img src="https://img.shields.io/github/downloads/esrrhs/fuckbaiduyun/total">](https://github.com/esrrhs/fuckbaiduyun/releases)
-[<img src="https://img.shields.io/github/workflow/status/esrrhs/fuckbaiduyun/Go">](https://github.com/esrrhs/fuckbaiduyun/actions)
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/6f60ab0b0386447db052066d90f478ee)](https://www.codacy.com/manual/esrrhs/fuckbaiduyun?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=esrrhs/fuckbaiduyun&amp;utm_campaign=Badge_Grade)
+[<img src="https://img.shields.io/github/actions/workflow/status/esrrhs/fuckbaiduyun/go.yml?branch=master">](https://github.com/esrrhs/fuckbaiduyun/actions)
 
 百度网盘快速加解密工具
 
