@@ -6,8 +6,8 @@ import (
 	"crypto/rc4"
 	"encoding/hex"
 	"fmt"
+	"github.com/esrrhs/gohome/list"
 	"github.com/esrrhs/gohome/loggo"
-	"github.com/esrrhs/gohome/rbuffergo"
 	"io"
 	"io/ioutil"
 	"math"
@@ -214,7 +214,7 @@ func defuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss
 
 	byteSlice := make([]byte, 4*1024*1024)
 
-	rb := rbuffergo.New(16*1024*1024, false)
+	rb := list.NewRBuffergo(16*1024*1024, false)
 
 	var post int
 
@@ -396,7 +396,7 @@ func fuckverify(key string, ss string, filetotal *int64, filedone *int64, md5str
 
 	byteSlice := make([]byte, 4*1024*1024)
 
-	rb := rbuffergo.New(16*1024*1024, false)
+	rb := list.NewRBuffergo(16*1024*1024, false)
 
 	var post int
 
@@ -534,7 +534,7 @@ func fuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss s
 
 	byteSlice := make([]byte, 4*1024*1024)
 
-	rb := rbuffergo.New(16*1024*1024, false)
+	rb := list.NewRBuffergo(16*1024*1024, false)
 
 	h := md5.New()
 
