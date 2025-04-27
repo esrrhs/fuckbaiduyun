@@ -1,6 +1,6 @@
 module github.com/esrrhs/fuckbaiduyun
 
-go go1.24.1
+go 1.24.1
 
 require (
 	github.com/esrrhs/gohome v0.0.0-20250426022937-504d912bccf7
