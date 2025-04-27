@@ -1,6 +1,6 @@
 module github.com/esrrhs/fuckbaiduyun
 
-go 1.22.0
+go go1.24.1
 
 toolchain go1.24.1
 
