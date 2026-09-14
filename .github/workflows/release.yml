@@ -74,7 +74,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y gcc libgl1-mesa-dev libxkbcommon-dev xorg-dev
+          sudo apt-get install --no-install-recommends -y gcc libgl1-mesa-dev libwayland-dev libx11-dev libxkbcommon-dev xorg-dev
 
       - name: Install Windows gcc
         if: runner.os == 'Windows'
