@@ -36,7 +36,7 @@
 
 ## 构建
 
-需要 Go 1.25+ 和 C 编译器。Windows 可用 MSYS2 gcc。
+需要 Go 1.27+ 和 C 编译器。Windows 可用 MSYS2 gcc。
 
 ```bash
 # Windows：必须加 -H windowsgui，否则会弹出控制台黑框
