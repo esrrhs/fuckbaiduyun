@@ -3,620 +3,464 @@ package main
 import (
 	"bufio"
 	"crypto/md5"
-	"crypto/rc4"
+	"crypto/rc4" //nolint:staticcheck // RC4 需与已有加密文件保持兼容
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"github.com/esrrhs/gohome/list"
-	"github.com/esrrhs/gohome/loggo"
 	"io"
-	"io/ioutil"
-	"math"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 )
 
-func getallfiles(pathname string, s []string) ([]string, error) {
-	rd, err := ioutil.ReadDir(pathname)
+const (
+	chunkSize = 1024 * 1024
+	encSuffix = ".fuckbaiduyun"
+	doneName  = "fuckbaiduyunDONE"
+	logName   = "fuck.log"
+)
+
+type Progress struct {
+	jobsTotal atomic.Int32
+	jobsDone  atomic.Int32
+	fileTotal atomic.Int64
+	fileDone  atomic.Int64
+}
+
+func (p *Progress) Jobs() (done, total int32) {
+	return p.jobsDone.Load(), p.jobsTotal.Load()
+}
+
+func (p *Progress) File() (done, total int64) {
+	return p.fileDone.Load(), p.fileTotal.Load()
+}
+
+func initLog() {
+	path := logName
+	if exe, err := os.Executable(); err == nil {
+		path = filepath.Join(filepath.Dir(exe), logName)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
-		fmt.Println("read dir fail:", err)
-		return s, err
+		log.SetFlags(log.LstdFlags)
+		return
 	}
-	for _, fi := range rd {
-		if fi.IsDir() {
-			fullDir := pathname + "/" + fi.Name()
-			s, err = getallfiles(fullDir, s)
-			if err != nil {
-				fmt.Println("read dir fail:", err)
-				return s, err
-			}
-		} else {
-			fullName := pathname + "/" + fi.Name()
-			fullName = filepath.FromSlash(fullName)
-			s = append(s, fullName)
+	log.SetOutput(io.MultiWriter(os.Stdout, f))
+	log.SetFlags(log.LstdFlags)
+}
+
+func getallfiles(root string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
+		if !d.IsDir() {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files, err
+}
+
+func pathsOverlap(a, b string) bool {
+	a, err1 := filepath.Abs(a)
+	b, err2 := filepath.Abs(b)
+	if err1 != nil || err2 != nil {
+		return strings.Contains(a, b) || strings.Contains(b, a)
 	}
-	return s, nil
+	a = filepath.Clean(a)
+	b = filepath.Clean(b)
+	if strings.EqualFold(a, b) {
+		return true
+	}
+	sep := string(os.PathSeparator)
+	al := strings.ToLower(a + sep)
+	bl := strings.ToLower(b + sep)
+	return strings.HasPrefix(al, bl) || strings.HasPrefix(bl, al)
 }
 
-func showError(err error) {
-	loggo.Error("%v", err)
-	panic(err.Error())
+func skipName(name string) bool {
+	base := filepath.Base(name)
+	return strings.HasPrefix(base, "fuckbaiduyun")
 }
 
-func showErrorStr(err string) {
-	loggo.Error("%v", err)
-	panic(err)
+func isEncryptedMain(name string) bool {
+	base := filepath.Base(name)
+	return strings.HasSuffix(base, encSuffix)
 }
 
-func dojob(jobtotal *int32, jobdone *int32, filetotal *int64, filedone *int64, input string, output string, doen bool,
-	key string, split int) {
+func isEncryptedSplit(name string) bool {
+	matched, _ := filepath.Match("*"+encSuffix+".*", filepath.Base(name))
+	return matched
+}
 
-	input = input + "/"
-	output = output + "/"
-	input = filepath.FromSlash(input)
-	output = filepath.FromSlash(output)
+func dojob(p *Progress, input, output string, encrypting bool, key string, split int) error {
 	input = filepath.Clean(input)
 	output = filepath.Clean(output)
 
-	var done map[string]int
-	done = make(map[string]int)
-	var workResultLock sync.WaitGroup
+	log.Printf("start input=%s output=%s encrypt=%v split=%d", input, output, encrypting, split)
 
-	loggo.Ini(loggo.Config{Level: loggo.LEVEL_DEBUG, Prefix: "fuck", MaxDay: 2})
-
-	loggo.Info("start")
-
-	if strings.Contains(output, input) || strings.Contains(input, output) {
-		showErrorStr("输入输出目录有重叠")
-		return
+	if pathsOverlap(input, output) {
+		return errors.New("输入输出目录有重叠")
 	}
 
-	var s []string
-
-	loggo.Info("get all file begin %v", input)
-
-	s, err := getallfiles(input+"/", s)
+	log.Printf("get all file begin %s", input)
+	files, err := getallfiles(input)
 	if err != nil {
-		showError(err)
+		return err
 	}
+	log.Printf("get all file done %d", len(files))
 
-	loggo.Info("get all file done %v", len(s))
+	done := make(map[string]struct{})
+	if err := loadDone(output, done); err != nil {
+		return err
+	}
+	log.Printf("loadDone %d", len(done))
 
-	loadDone(output, done)
-	loggo.Info("loadDone %v", len(done))
-
-	total := 0
-	for _, ss := range s {
-
-		if strings.HasPrefix(filepath.Base(ss), "fuckbaiduyun") {
+	var jobtotal int32
+	for _, ss := range files {
+		if skipName(ss) {
 			continue
 		}
-
-		total++
+		if isEncryptedMain(ss) {
+			if !encrypting {
+				jobtotal++
+			}
+		} else if !isEncryptedSplit(ss) && encrypting {
+			jobtotal++
+		}
 	}
+	p.jobsTotal.Store(jobtotal)
+	log.Printf("all job file jobtotal %d", jobtotal)
 
-	loggo.Info("all file total %v", total)
-
-	var num int32
-
-	num = 0
-
-	for _, ss := range s {
-
-		if strings.HasPrefix(filepath.Base(ss), "fuckbaiduyun") {
+	for _, ss := range files {
+		if skipName(ss) {
 			continue
 		}
-		if strings.HasSuffix(filepath.Base(ss), "fuckbaiduyun") {
-			if !doen {
-				*jobtotal++
+		if isEncryptedMain(ss) {
+			if !encrypting {
+				if err := defuck(p, key, ss, done, input, output); err != nil {
+					return err
+				}
 			}
-		} else {
-			if doen {
-				*jobtotal++
-			}
-		}
-	}
-
-	loggo.Info("all job file jobtotal %v", *jobtotal)
-
-	for _, ss := range s {
-
-		if strings.HasPrefix(filepath.Base(ss), "fuckbaiduyun") {
 			continue
 		}
-		if strings.HasSuffix(filepath.Base(ss), "fuckbaiduyun") {
-			if !doen {
-				defuck(workResultLock, &num, key, split, ss, false,
-					jobdone, jobtotal, done, input, output, filetotal, filedone)
-			}
-		} else {
-			if doen {
-				fuck(workResultLock, &num, key, split, ss, false,
-					jobdone, jobtotal, done, input, output, filetotal, filedone)
+		if isEncryptedSplit(ss) {
+			continue
+		}
+		if encrypting {
+			if err := fuck(p, key, split, ss, done, input, output); err != nil {
+				return err
 			}
 		}
 	}
 
-	workResultLock.Wait()
-	delDone(output)
+	return delDone(output)
 }
 
-func defuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss string, flag bool,
-	jobdone *int32, jobtotal *int32, done map[string]int, input string, output string,
-	filetotal *int64, filedone *int64) {
-
-	ss = filepath.FromSlash(ss)
+func defuck(p *Progress, key, ss string, done map[string]struct{}, input, output string) error {
 	ss = filepath.Clean(ss)
-	loggo.Info("start back : %v", ss)
+	log.Printf("start back : %s", ss)
 
-	if flag {
-		defer workResultLock.Done()
-		defer atomic.AddInt32(num, -1)
+	if _, ok := done[ss]; ok {
+		n := p.jobsDone.Add(1)
+		log.Printf("end back skip done : %d/%d %s", n, p.jobsTotal.Load(), ss)
+		return nil
 	}
 
-	if done[ss] == 1 {
-		atomic.AddInt32(jobdone, 1)
-		loggo.Info("end back skip done : %v/%v %v", *jobdone, *jobtotal, ss)
-		return
+	rel, err := filepath.Rel(input, ss)
+	if err != nil {
+		return err
 	}
-
-	outputss := strings.Replace(strings.TrimSuffix(ss, ".fuckbaiduyun"), input, output, -1)
-	folderPath := filepath.Dir(outputss)
-	os.MkdirAll(folderPath, os.ModePerm)
-
+	outputss := filepath.Join(output, strings.TrimSuffix(rel, encSuffix))
 	if outputss == ss {
-		showErrorStr("filename is same " + ss)
+		return errors.New("filename is same " + ss)
+	}
+	if err := os.MkdirAll(filepath.Dir(outputss), os.ModePerm); err != nil {
+		return err
 	}
 
-	inputfolderPath := filepath.Dir(ss)
-
-	var son []string
-
-	rd, err := ioutil.ReadDir(inputfolderPath)
-	if err != nil {
-		showError(err)
-	}
-	for _, fi := range rd {
-		if !fi.IsDir() {
-			m, _ := filepath.Match("*.fuckbaiduyun.*", fi.Name())
-			if m {
-				loggo.Info("back add split: %v %v", ss, fi.Name())
-				name := inputfolderPath + "/" + fi.Name()
-				son = append(son, filepath.FromSlash(name))
-			}
-		}
-	}
-
-	ifile, err := os.Open(ss)
-	if err != nil {
-		showError(err)
-	}
-
-	// Open file for writing
 	ofile, err := os.OpenFile(outputss, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
 	if err != nil {
-		showError(err)
+		return err
 	}
-
-	bufferedReader := bufio.NewReader(ifile)
-	fi, err := ifile.Stat()
-	if err != nil {
-		showError(err)
-	}
-	*filedone = 0
-	*filetotal = fi.Size()
-
+	defer ofile.Close()
 	bufferedWriter := bufio.NewWriter(ofile)
 
-	byteSlice := make([]byte, 4*1024*1024)
-
-	rb := list.NewRBuffergo(16*1024*1024, false)
-
-	var post int
-
-	fileend := false
-	for !fileend || !rb.Empty() {
-		for !fileend && rb.Size()+len(byteSlice) < rb.Capacity() {
-
-			numBytesRead, err := bufferedReader.Read(byteSlice)
-
-			if numBytesRead == 0 {
-				find := false
-
-				for _, sf := range son {
-					if sf == ss+"."+strconv.Itoa(post) {
-						find = true
-					}
-				}
-
-				if find {
-					ifile.Close()
-					ifile, err = os.Open(ss + "." + strconv.Itoa(post))
-					if err != nil {
-						showError(err)
-					}
-					post++
-					bufferedReader = bufio.NewReader(ifile)
-					fi, err := ifile.Stat()
-					if err != nil {
-						showError(err)
-					}
-					*filedone = 0
-					*filetotal = fi.Size()
-					loggo.Info("start back : %v", ss+"."+strconv.Itoa(post))
-					continue
-				} else {
-					fileend = true
-					break
-				}
-			}
-
-			if err != nil {
-				showError(err)
-			}
-
-			rb.Write(byteSlice[:numBytesRead])
-			*filedone += int64(numBytesRead)
+	if err := processParts(ss, key, p, func(plain []byte) error {
+		n, err := bufferedWriter.Write(plain)
+		if err != nil {
+			return err
 		}
-
-		for !rb.Empty() {
-			if rb.Size() < 1024*1024 {
-				if !fileend {
-					break
-				}
-			}
-
-			numBytesRead := int(math.Min(float64(rb.Size()), 1024*1024))
-
-			if !rb.Read(byteSlice[0:numBytesRead]) {
-				showErrorStr("rbuffergo read fail " + ss)
-			}
-
-			d := decrypt(byteSlice[:numBytesRead], key)
-			numBytesRead = len(d)
-
-			numBytesWrite, err := bufferedWriter.Write(d)
-			if err != nil {
-				showError(err)
-			}
-			if numBytesRead != numBytesWrite {
-				showErrorStr("diff size " + strconv.Itoa(numBytesRead) + " " + strconv.Itoa(numBytesWrite))
-			}
-
-			bufferedWriter.Flush()
+		if n != len(plain) {
+			return fmt.Errorf("diff size %d %d", len(plain), n)
 		}
+		return bufferedWriter.Flush()
+	}); err != nil {
+		return err
 	}
 
-	ifile.Close()
-	ofile.Close()
+	if err := bufferedWriter.Flush(); err != nil {
+		return err
+	}
+	if err := ofile.Close(); err != nil {
+		return err
+	}
 
-	atomic.AddInt32(jobdone, 1)
-
-	done[ss] = 1
-	saveDone(output, ss)
-
-	loggo.Info("end back : %v/%v %v", *jobdone, *jobtotal, ss)
+	n := p.jobsDone.Add(1)
+	done[ss] = struct{}{}
+	if err := saveDone(output, ss); err != nil {
+		return err
+	}
+	log.Printf("end back : %d/%d %s", n, p.jobsTotal.Load(), ss)
+	return nil
 }
 
-func saveDone(output string, ss string) {
-
-	name := filepath.FromSlash(output + "/fuckbaiduyunDONE")
+func saveDone(output, ss string) error {
+	name := filepath.Join(output, doneName)
 	file, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
-		showError(err)
+		return err
+	}
+	defer file.Close()
+
+	if _, err := file.WriteString(filepath.Clean(ss) + "\n"); err != nil {
+		return err
+	}
+	log.Printf("save Done %s", ss)
+	return nil
+}
+
+func delDone(output string) error {
+	err := os.Remove(filepath.Join(output, doneName))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func loadDone(output string, done map[string]struct{}) error {
+	if err := os.MkdirAll(output, os.ModePerm); err != nil {
+		return err
 	}
 
-	wd := bufio.NewWriter(file)
-	wd.WriteString(filepath.FromSlash(ss) + "\n")
-	wd.Flush()
-
-	loggo.Info("save Done %v", filepath.FromSlash(ss))
-
-	file.Close()
-}
-
-func delDone(output string) {
-	name := filepath.FromSlash(output + "/fuckbaiduyunDONE")
-	os.Remove(name)
-}
-
-func loadDone(output string, done map[string]int) {
-
-	os.MkdirAll(output, os.ModePerm)
-
-	name := filepath.FromSlash(output + "/fuckbaiduyunDONE")
+	name := filepath.Join(output, doneName)
 	file, err := os.Open(name)
 	if err != nil {
-		file, err = os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
-		if err != nil {
-			showError(err)
+		if os.IsNotExist(err) {
+			f, cerr := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+			if cerr != nil {
+				return cerr
+			}
+			return f.Close()
 		}
+		return err
 	}
+	defer file.Close()
 
-	rd := bufio.NewReader(file)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		item := filepath.Clean(strings.TrimSpace(scanner.Text()))
+		if item == "" {
+			continue
+		}
+		done[item] = struct{}{}
+		log.Printf("load Done %s", item)
+	}
+	return scanner.Err()
+}
+
+func processParts(mainPath, key string, p *Progress, handle func([]byte) error) error {
+	path := mainPath
+	part := 0
 	for {
-		line, err := rd.ReadString('\n') //以'\n'为结束符读入一行
-
-		if err != nil || io.EOF == err {
-			break
-		}
-
-		name := filepath.FromSlash(line)
-		name = strings.TrimSpace(name)
-		done[name] = 1
-		loggo.Info("load Done %v", name)
-	}
-
-	file.Close()
-}
-
-func fuckverify(key string, ss string, filetotal *int64, filedone *int64, md5str string) {
-
-	ss = filepath.FromSlash(ss)
-	ss = filepath.Clean(ss)
-	loggo.Info("start fuckverify : %v", ss)
-
-	inputfolderPath := filepath.Dir(ss)
-
-	var son []string
-
-	rd, err := ioutil.ReadDir(inputfolderPath)
-	if err != nil {
-		showError(err)
-	}
-	for _, fi := range rd {
-		if !fi.IsDir() {
-			m, _ := filepath.Match("*.fuckbaiduyun.*", fi.Name())
-			if m {
-				loggo.Info("back add split: %v %v", ss, fi.Name())
-				name := inputfolderPath + "/" + fi.Name()
-				son = append(son, filepath.FromSlash(name))
+		ifile, err := os.Open(path)
+		if err != nil {
+			if part == 0 || !os.IsNotExist(err) {
+				return err
 			}
+			return nil
 		}
-	}
 
-	ifile, err := os.Open(ss)
-	if err != nil {
-		showError(err)
-	}
+		fi, err := ifile.Stat()
+		if err != nil {
+			ifile.Close()
+			return err
+		}
+		p.fileDone.Store(0)
+		p.fileTotal.Store(fi.Size())
+		log.Printf("start part : %s", path)
 
-	bufferedReader := bufio.NewReader(ifile)
-	fi, err := ifile.Stat()
-	if err != nil {
-		showError(err)
-	}
-	*filedone = 0
-	*filetotal = fi.Size()
-
-	h := md5.New()
-
-	byteSlice := make([]byte, 4*1024*1024)
-
-	rb := list.NewRBuffergo(16*1024*1024, false)
-
-	var post int
-
-	fileend := false
-	for !fileend || !rb.Empty() {
-		for !fileend && rb.Size()+len(byteSlice) < rb.Capacity() {
-
-			numBytesRead, err := bufferedReader.Read(byteSlice)
-
-			if numBytesRead == 0 {
-				find := false
-
-				for _, sf := range son {
-					if sf == ss+"."+strconv.Itoa(post) {
-						find = true
-					}
-				}
-
-				if find {
+		buf := make([]byte, chunkSize)
+		for {
+			n, rerr := io.ReadFull(ifile, buf)
+			if n > 0 {
+				p.fileDone.Add(int64(n))
+				plain := decrypt(buf[:n], key)
+				if err := handle(plain); err != nil {
 					ifile.Close()
-					ifile, err = os.Open(ss + "." + strconv.Itoa(post))
-					if err != nil {
-						showError(err)
-					}
-					post++
-					bufferedReader = bufio.NewReader(ifile)
-					fi, err := ifile.Stat()
-					if err != nil {
-						showError(err)
-					}
-					*filedone = 0
-					*filetotal = fi.Size()
-					loggo.Info("start back : %v", ss+"."+strconv.Itoa(post))
-					continue
-				} else {
-					fileend = true
-					break
+					return err
 				}
 			}
-
-			if err != nil {
-				showError(err)
+			if rerr == nil {
+				continue
 			}
-
-			rb.Write(byteSlice[:numBytesRead])
-			*filedone += int64(numBytesRead)
-		}
-
-		for !rb.Empty() {
-			if rb.Size() < 1024*1024 {
-				if !fileend {
-					break
-				}
-			}
-
-			numBytesRead := int(math.Min(float64(rb.Size()), 1024*1024))
-
-			if !rb.Read(byteSlice[0:numBytesRead]) {
-				showErrorStr("rbuffergo read fail " + ss)
-			}
-
-			d := decrypt(byteSlice[:numBytesRead], key)
-			numBytesRead = len(d)
-
-			h.Write(d)
-		}
-	}
-
-	ifile.Close()
-
-	newmd5str := fmt.Sprintf("%x", h.Sum(nil))
-
-	if newmd5str != md5str {
-		showErrorStr("fuckverify fail " + ss)
-	}
-
-	loggo.Info("fuckverify ok: %v", ss)
-}
-
-func fuck(workResultLock sync.WaitGroup, num *int32, key string, split int, ss string, flag bool,
-	jobdone *int32, jobtotal *int32, done map[string]int, input string, output string,
-	filetotal *int64, filedone *int64) {
-
-	ss = filepath.FromSlash(ss)
-	ss = filepath.Clean(ss)
-	loggo.Info("start fuck : %v", ss)
-
-	if flag {
-		defer workResultLock.Done()
-		defer atomic.AddInt32(num, -1)
-	}
-
-	if done[ss] == 1 {
-		atomic.AddInt32(jobdone, 1)
-		loggo.Info("end fuck skip done : %v/%v %v", *jobdone, *jobtotal, ss)
-		return
-	}
-
-	m, _ := filepath.Match("*.fuckbaiduyun.*", filepath.Base(ss))
-	if m {
-		atomic.AddInt32(jobdone, 1)
-		loggo.Info("end fuck skip split: %v/%v %v", *jobdone, *jobtotal, ss)
-		return
-	}
-
-	ifile, err := os.Open(ss)
-	if err != nil {
-		showError(err)
-	}
-
-	outputss := strings.Replace(ss, input, output, -1)
-	folderPath := filepath.Dir(outputss)
-	os.MkdirAll(folderPath, os.ModePerm)
-
-	if outputss == ss {
-		showErrorStr("filename is same " + ss)
-	}
-
-	// Open file for writing
-	ofile, err := os.OpenFile(outputss+".fuckbaiduyun",
-		os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
-	if err != nil {
-		showError(err)
-	}
-
-	bufferedReader := bufio.NewReader(ifile)
-	fi, err := ifile.Stat()
-	if err != nil {
-		showError(err)
-	}
-	*filedone = 0
-	*filetotal = fi.Size()
-
-	bufferedWriter := bufio.NewWriter(ofile)
-
-	byteSlice := make([]byte, 4*1024*1024)
-
-	rb := list.NewRBuffergo(16*1024*1024, false)
-
-	h := md5.New()
-
-	var cur int
-	var post int
-
-	fileend := false
-	for !fileend || !rb.Empty() {
-		for !fileend && rb.Size()+len(byteSlice) < rb.Capacity() {
-
-			numBytesRead, err := bufferedReader.Read(byteSlice)
-
-			if numBytesRead == 0 {
-				fileend = true
+			if errors.Is(rerr, io.EOF) || errors.Is(rerr, io.ErrUnexpectedEOF) {
 				break
 			}
-
-			if err != nil {
-				showError(err)
-			}
-
-			rb.Write(byteSlice[:numBytesRead])
-			*filedone += int64(numBytesRead)
-
-			h.Write(byteSlice[:numBytesRead])
+			ifile.Close()
+			return rerr
 		}
+		ifile.Close()
 
-		for !rb.Empty() {
-			if rb.Size() < 1024*1024 {
-				if !fileend {
-					break
+		path = mainPath + "." + strconv.Itoa(part)
+		part++
+	}
+}
+
+func fuckverify(key, ss string, p *Progress, md5str string) error {
+	ss = filepath.Clean(ss)
+	log.Printf("start fuckverify : %s", ss)
+
+	h := md5.New()
+	if err := processParts(ss, key, p, func(plain []byte) error {
+		_, err := h.Write(plain)
+		return err
+	}); err != nil {
+		return err
+	}
+
+	newmd5str := fmt.Sprintf("%x", h.Sum(nil))
+	if newmd5str != md5str {
+		return errors.New("fuckverify fail " + ss)
+	}
+	log.Printf("fuckverify ok: %s", ss)
+	return nil
+}
+
+func fuck(p *Progress, key string, split int, ss string, done map[string]struct{}, input, output string) error {
+	ss = filepath.Clean(ss)
+	log.Printf("start fuck : %s", ss)
+
+	if _, ok := done[ss]; ok {
+		n := p.jobsDone.Add(1)
+		log.Printf("end fuck skip done : %d/%d %s", n, p.jobsTotal.Load(), ss)
+		return nil
+	}
+
+	ifile, err := os.Open(ss)
+	if err != nil {
+		return err
+	}
+	defer ifile.Close()
+
+	rel, err := filepath.Rel(input, ss)
+	if err != nil {
+		return err
+	}
+	outputss := filepath.Join(output, rel)
+	if outputss == ss {
+		return errors.New("filename is same " + ss)
+	}
+	if err := os.MkdirAll(filepath.Dir(outputss), os.ModePerm); err != nil {
+		return err
+	}
+
+	outPath := outputss + encSuffix
+	ofile, err := os.OpenFile(outPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+	bufferedWriter := bufio.NewWriter(ofile)
+
+	closeCurrent := func() error {
+		if err := bufferedWriter.Flush(); err != nil {
+			_ = ofile.Close()
+			return err
+		}
+		return ofile.Close()
+	}
+
+	fi, err := ifile.Stat()
+	if err != nil {
+		_ = closeCurrent()
+		return err
+	}
+	p.fileDone.Store(0)
+	p.fileTotal.Store(fi.Size())
+
+	h := md5.New()
+	buf := make([]byte, chunkSize)
+	var cur, post int
+
+	for {
+		n, rerr := io.ReadFull(ifile, buf)
+		if n > 0 {
+			p.fileDone.Add(int64(n))
+			if _, err := h.Write(buf[:n]); err != nil {
+				_ = closeCurrent()
+				return err
+			}
+			d := encrypt(buf[:n], key)
+			cur += n
+			if split > 0 && cur > split {
+				if err := closeCurrent(); err != nil {
+					return err
 				}
-			}
-
-			numBytesRead := int(math.Min(float64(rb.Size()), 1024*1024))
-
-			if !rb.Read(byteSlice[0:numBytesRead]) {
-				showErrorStr("rbuffergo read fail " + ss)
-			}
-
-			d := encrypt(byteSlice[:numBytesRead], key)
-
-			cur += numBytesRead
-
-			if cur > split {
-				ofile.Close()
-				bufferedWriter.Flush()
-				ofile, err = os.OpenFile(outputss+".fuckbaiduyun"+"."+strconv.Itoa(post),
-					os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+				next := outputss + encSuffix + "." + strconv.Itoa(post)
+				ofile, err = os.OpenFile(next, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 				if err != nil {
-					showError(err)
+					return err
 				}
 				bufferedWriter = bufio.NewWriter(ofile)
 				post++
 				cur -= split
-				loggo.Info("start fuck : %v", outputss+".fuckbaiduyun"+"."+strconv.Itoa(post))
+				log.Printf("start fuck : %s", next)
 			}
-
-			numBytesWrite, err := bufferedWriter.Write(d)
+			wn, err := bufferedWriter.Write(d)
 			if err != nil {
-				showError(err)
+				_ = closeCurrent()
+				return err
 			}
-			if numBytesRead != numBytesWrite {
-				showErrorStr("diff size " + strconv.Itoa(numBytesRead) + " " + strconv.Itoa(numBytesWrite))
+			if wn != len(d) {
+				_ = closeCurrent()
+				return fmt.Errorf("diff size %d %d", len(d), wn)
 			}
-
-			bufferedWriter.Flush()
+			if err := bufferedWriter.Flush(); err != nil {
+				_ = closeCurrent()
+				return err
+			}
 		}
+		if rerr == nil {
+			continue
+		}
+		if errors.Is(rerr, io.EOF) || errors.Is(rerr, io.ErrUnexpectedEOF) {
+			break
+		}
+		_ = closeCurrent()
+		return rerr
 	}
 
-	ifile.Close()
-	ofile.Close()
+	if err := closeCurrent(); err != nil {
+		return err
+	}
 
 	md5str := fmt.Sprintf("%x", h.Sum(nil))
-	fuckverify(key, outputss+".fuckbaiduyun", filetotal, filedone, md5str)
+	if err := fuckverify(key, outPath, p, md5str); err != nil {
+		return err
+	}
 
-	atomic.AddInt32(jobdone, 1)
-
-	done[ss] = 1
-	saveDone(output, ss)
-
-	loggo.Info("end fuck : %v/%v %v", *jobdone, *jobtotal, ss)
+	n := p.jobsDone.Add(1)
+	done[ss] = struct{}{}
+	if err := saveDone(output, ss); err != nil {
+		return err
+	}
+	log.Printf("end fuck : %d/%d %s", n, p.jobsTotal.Load(), ss)
+	return nil
 }
 
 func createHash(key string) string {
@@ -625,22 +469,20 @@ func createHash(key string) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
-func encrypt(data []byte, passphrase string) []byte {
+func crypt(data []byte, passphrase string) []byte {
 	c, err := rc4.NewCipher([]byte(createHash(passphrase)))
 	if err != nil {
-		showError(err)
+		panic(err)
 	}
 	dst := make([]byte, len(data))
 	c.XORKeyStream(dst, data)
 	return dst
 }
 
+func encrypt(data []byte, passphrase string) []byte {
+	return crypt(data, passphrase)
+}
+
 func decrypt(data []byte, passphrase string) []byte {
-	c, err := rc4.NewCipher([]byte(createHash(passphrase)))
-	if err != nil {
-		showError(err)
-	}
-	dst := make([]byte, len(data))
-	c.XORKeyStream(dst, data)
-	return dst
+	return crypt(data, passphrase)
 }
