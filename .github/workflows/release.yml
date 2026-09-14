@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  push:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Detect version change
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VER=$(sed -n 's/^const Version = "\(.*\)"/\1/p' version.go | head -n1)
+          if [ -z "$VER" ]; then
+            echo "cannot parse Version from version.go" >&2
+            exit 1
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "code version: v${VER}"
+          if gh release view "v${VER}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release v${VER} already exists, skip packaging."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release v${VER} does not exist, will build and publish."
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: version
+    if: needs.version.outputs.should_release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            bin: fuckbaiduyun
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            bin: fuckbaiduyun.exe
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            bin: fuckbaiduyun
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y gcc libgl1-mesa-dev libxkbcommon-dev xorg-dev
+
+      - name: Install Windows gcc
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-pkg-config
+          path-type: inherit
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        env:
+          CGO_ENABLED: 1
+        run: go build -trimpath -ldflags "-s -w" -o "${{ matrix.bin }}" .
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CGO_ENABLED: 1
+        run: go build -trimpath -ldflags "-s -w -H windowsgui" -o "${{ matrix.bin }}" .
+
+      - name: Pack
+        shell: bash
+        env:
+          VER: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          PKG="fuckbaiduyun-v${VER}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          mkdir -p dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            powershell -NoProfile -Command "Compress-Archive -Path '${{ matrix.bin }}' -DestinationPath 'dist/${PKG}.zip'"
+          else
+            tar -czf "dist/${PKG}.tar.gz" "${{ matrix.bin }}"
+          fi
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: [version, build]
+    if: needs.version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+          gh release create "v${VER}" \
+            --repo "${{ github.repository }}" \
+            --title "v${VER}" \
+            --generate-notes \
+            dist/*
